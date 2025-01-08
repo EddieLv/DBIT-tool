@@ -18,7 +18,7 @@ library(ggplot2)
 library(viridis)
 library(grid)
 
-shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium = F, python_env = NULL, script = NULL) {
+shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium = F, python_env = NULL, script = NULL, tooltip = NULL) {
   DefaultAssay(seurat) = assay
   
   move.axis.shiny = function(df, x = NULL, y = NULL, numBarcode = NULL, x.num = 0, y.num = 0) {
@@ -141,7 +141,7 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
                coordinates = tissue.positions, spot.radius = spot.radius))
   }
   
-  make.feature.plot.shiny = function(ann = NULL, anno.df = NULL, alpha = 0.8, pt.size = 0.1, shape = 22, show.feature = NULL, mode = NULL) {
+  make.feature.plot.shiny = function(ann = NULL, anno.df = NULL, alpha = 0.8, pt.size = 0.1, shape = 22, show.feature = NULL, mode = NULL, tooltip = tooltip) {
     annotation = ann[[1]]
     coordinates = ann[[2]]
     img = ann[[3]]
@@ -152,9 +152,14 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
       coordinates$feature = anno.df[[show.feature]]
     }
     
+    if (!is.null(tooltip)) {
+      coordinates$tooltip = anno.df[[tooltip]]
+    }
+    
     if (is.numeric(coordinates$feature)) {
       cols = colorRampPalette(colors = rev(x = brewer.pal(n = 11, name = "Spectral")))(100)
-      p = ggplot(coordinates, aes(x = x, y = y, data_id = id_stvis, tooltip = round(feature, 3))) +
+      coordinates$feature = round(coordinates$feature, 3)
+      p = ggplot(coordinates, aes_string(x = "x", y = "y", data_id = "id_stvis", tooltip = ifelse(is.null(tooltip), "feature", "tooltip"))) + 
         annotation +
         geom_point_interactive(aes(fill = feature, alpha = feature), size = pt.size, shape = shape, stroke = NA, color = "black") +
         scale_fill_gradientn(colors = cols) +
@@ -174,7 +179,7 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
         shape = 0
       }
       
-      p = ggplot(coordinates, aes(x = x, y = y, data_id = id_stvis, tooltip = feature)) +
+      p = ggplot(coordinates, aes_string(x = "x", y = "y", data_id = "id_stvis", tooltip = ifelse(is.null(tooltip), "feature", "tooltip"))) + 
         annotation +
         geom_point_interactive(aes(fill = feature), size = pt.size, shape = shape, stroke = 0.1, alpha = alpha, color = "black") +
         ylim(nrow(img), 0) + xlim(0, ncol(img)) +
@@ -191,12 +196,11 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
   add_image = function (seurat, isVisium = isVisium) {
     image = Images(seurat)[1]
     if (isVisium) {
-      coordinates = GetTissueCoordinates(seurat, image = image) %>%
-        mutate(x = imagecol, y = imagerow)
+      coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
     } else {
       coordinates = GetTissueCoordinates(seurat, image = image) %>%
-        mutate(x = imagerow * seurat@images[[image]]@scale.factors$lowres,
-               y = imagecol * seurat@images[[image]]@scale.factors$lowres)
+        mutate(x = x * seurat@images[[image]]@scale.factors$lowres,
+               y = y * seurat@images[[image]]@scale.factors$lowres)
       coordinates = rotate.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90)
       coordinates = flip.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
     }
@@ -346,9 +350,9 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
       seurat@images = img
     }
     
-    if (sum(str_detect(colnames(seurat), "x")) < dim(seurat)[2]) {
-      stop("Your cell id_stvis must be formatted like 1x1, 1x2 or sample_1sx1, sample_1x2 ...")
-    }
+    # if (sum(str_detect(colnames(seurat), "x")) < dim(seurat)[2]) {
+    #   stop("Your cell id_stvis must be formatted like 1x1, 1x2 or sample_1sx1, sample_1x2 ...")
+    # }
     
     sampleChoice = as.character(unique(seurat$orig.ident))
     shapeChoice = c(22, 21)
@@ -358,8 +362,10 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
     #   seurat@meta.data[is.null(seurat[[i]]), i] = "STvis"
     # }
     
-    clean.barcodes = str_match(colnames(seurat), pattern = "\\d+x\\d+")[ , 1]
-    prefix = gsub(clean.barcodes[1], "", colnames(seurat)[1])
+    # clean.barcodes = str_match(colnames(seurat), pattern = "\\d+x\\d+")[ , 1]
+    clean.barcodes = paste0(GetTissueCoordinates(seurat, image = image)[, 1], "x", GetTissueCoordinates(seurat, image = image)[, 2])
+    # prefix = gsub(clean.barcodes[1], "", colnames(seurat)[1])
+    prefix = seurat$orig.ident[1]
     # add important feature!
     seurat$barcodeB_stvis = str_split(clean.barcodes, "x", simplify = T)[ , 1]
     seurat$barcodeA_stvis = str_split(clean.barcodes, "x", simplify = T)[ , 2]
@@ -467,7 +473,8 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
                    {
                      df.tmp = as.data.frame(reactiveValuesToList(df))
                      x = girafe(ggobj = make.feature.plot.shiny(ann = rv$ann, anno.df = df.tmp, alpha = input$alphaValue, pt.size = input$spotSize*10, mode = input$filter.mode,
-                                                                shape = as.integer(input$shapeInput), show.feature = ifelse(is.null(input$featureInput), "orig.ident", input$featureInput)),
+                                                                shape = as.integer(input$shapeInput), show.feature = ifelse(is.null(input$featureInput), "orig.ident", input$featureInput), 
+                                                                tooltip = tooltip),
                                 width_svg = 12, height_svg = 10)
                      x = girafe_options(x,
                                         opts_zoom(min = 1, max = 10),
@@ -549,9 +556,11 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
           if (isVisium) {
             message("Visium only support modify labels now!")
           } else {
-            seurat.backup@images[[image]]@coordinates[ , c("imagerow", "imagecol")] = rv$ann[[2]][ , c("x", "y")] %>% 
+            coordinates = rv$ann[[2]][ , c("x", "y")] %>% 
               rotate.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90) %>% 
               flip.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
+            fov = CreateFOV(coordinates, type = "centroids", radius = seurat@images[[image]]@scale.factors$spot, assay = "Spatial")
+            seurat.backup@images[[image]]@boundaries = fov@boundaries
           }
           
           cols.backup = colnames(seurat.backup@meta.data)[!colnames(seurat.backup@meta.data) %in% c("barcodeB_stvis", "barcodeA_stvis", "id_stvis")]
@@ -578,9 +587,11 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
           if (isVisium) {
             message("Visium only support modify labels now!")
           } else {
-            seurat@images[[image]]@coordinates[ , c("imagerow", "imagecol")] = rv$ann[[2]][ , c("x", "y")] %>% 
+            coordinates = rv$ann[[2]][ , c("x", "y")] %>% 
               rotate.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90) %>% 
               flip.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
+            fov = CreateFOV(coordinates, type = "centroids", radius = seurat@images[[image]]@scale.factors$spot, assay = "Spatial")
+            seurat@images[[image]]@boundaries = fov@boundaries
           }
           
           seurat@meta.data = seurat@meta.data[ , !(colnames(seurat@meta.data) %in% c("barcodeB_stvis", "barcodeA_stvis", "id_stvis"))]
