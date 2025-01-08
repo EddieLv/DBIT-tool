@@ -18,7 +18,7 @@ library(ggplot2)
 library(viridis)
 library(grid)
 
-shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium = F, python_env = NULL, script = NULL, tooltip = NULL) {
+shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, python_env = NULL, script = NULL, tooltip = NULL) {
   DefaultAssay(seurat) = assay
   
   move.axis.shiny = function(df, x = NULL, y = NULL, numBarcode = NULL, x.num = 0, y.num = 0) {
@@ -193,21 +193,17 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
     return(p)
   }
   
-  add_image = function (seurat, isVisium = isVisium) {
+  add_image = function (seurat) {
     image = Images(seurat)[1]
-    if (isVisium) {
-      coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
-    } else {
-      # 暂时解决方案
-      coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
-      colnames(coordinates) = c("x", "y")
-      coordinates = coordinates %>%
-        mutate(x = x * seurat@images[[image]]@scale.factors$lowres,
-               y = y * seurat@images[[image]]@scale.factors$lowres)
-      #
-      coordinates = rotate.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90)
-      coordinates = flip.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
-    }
+    # 暂时解决方案
+    coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
+    colnames(coordinates) = c("x", "y")
+    coordinates = coordinates %>%
+      mutate(x = x * seurat@images[[image]]@scale.factors$lowres,
+             y = y * seurat@images[[image]]@scale.factors$lowres)
+    #
+    coordinates = rotate.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90)
+    coordinates = flip.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
     coordinates$id_stvis = seurat$id_stvis
     
     img = seurat@images[[image]]@image
@@ -397,7 +393,7 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
     rv = reactiveValues(sNr = "1", ann = NULL)
     observeEvent(input$sampleInput, {
       rv$sNr = sampleChoice[1]
-      rv$ann = add_image(seurat, isVisium = isVisium)
+      rv$ann = add_image(seurat)
     })
     
     observeEvent(input$gene.ok, {
@@ -557,16 +553,10 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
         }
         
         if (exists("seurat.backup")) {
-          if (isVisium) {
-            message("Visium only support modify labels now!")
-          } else {
-            coordinates = rv$ann[[2]][ , c("x", "y")] %>% 
-              rotate.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90) %>% 
-              flip.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
-            fov = CreateFOV(coordinates, type = "centroids", radius = seurat@images[[image]]@scale.factors$spot, assay = "Spatial")
-            seurat.backup@images[[image]]@boundaries = fov@boundaries
-          }
-          
+          coordinates = rv$ann[[2]][ , c("x", "y")] %>% 
+            rotate.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90) %>% 
+            flip.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
+
           cols.backup = colnames(seurat.backup@meta.data)[!colnames(seurat.backup@meta.data) %in% c("barcodeB_stvis", "barcodeA_stvis", "id_stvis")]
           for (i in cols.backup) {
             if (is.factor(seurat@meta.data[[i]])) {
@@ -588,15 +578,9 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
           stopApp(returnValue = seurat.backup)
           
         } else {
-          if (isVisium) {
-            message("Visium only support modify labels now!")
-          } else {
-            coordinates = rv$ann[[2]][ , c("x", "y")] %>% 
-              rotate.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90) %>% 
-              flip.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
-            fov = CreateFOV(coordinates, type = "centroids", radius = seurat@images[[image]]@scale.factors$spot, assay = "Spatial")
-            seurat@images[[image]]@boundaries = fov@boundaries
-          }
+          coordinates = rv$ann[[2]][ , c("x", "y")] %>% 
+            rotate.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90) %>% 
+            flip.axis.shiny(x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
           
           seurat@meta.data = seurat@meta.data[ , !(colnames(seurat@meta.data) %in% c("barcodeB_stvis", "barcodeA_stvis", "id_stvis"))]
           stopApp(returnValue = seurat)
