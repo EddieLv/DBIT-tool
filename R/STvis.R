@@ -201,10 +201,10 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
       # 暂时解决方案
       coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
       colnames(coordinates) = c("x", "y")
-      #
-      coordinates = GetTissueCoordinates(seurat, image = image) %>%
+      coordinates = coordinates %>%
         mutate(x = x * seurat@images[[image]]@scale.factors$lowres,
                y = y * seurat@images[[image]]@scale.factors$lowres)
+      #
       coordinates = rotate.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), angle = 90)
       coordinates = flip.axis.shiny(coordinates, x = "x", y = "y", numBarcode = ifelse(max(seurat$barcodeB_stvis) > 50, 96, 50), horizontal = T)
     }
