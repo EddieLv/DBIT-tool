@@ -198,6 +198,10 @@ shiny_st = function(seurat, assay = "SCT", slot = "data", image = NULL, isVisium
     if (isVisium) {
       coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
     } else {
+      # 暂时解决方案
+      coordinates = GetTissueCoordinates(seurat, image = image)[, 1:2]
+      colnames(coordinates) = c("x", "y")
+      #
       coordinates = GetTissueCoordinates(seurat, image = image) %>%
         mutate(x = x * seurat@images[[image]]@scale.factors$lowres,
                y = y * seurat@images[[image]]@scale.factors$lowres)
